@@ -304,7 +304,7 @@ ___mkd_reparse(char *bfr, int size, int flags, MMIOT *f)
     ___mkd_initmmiot(&sub, f->footnotes);
     
     sub.flags = f->flags | flags;
-    sub.base = f->base;
+    sub.cb = f->cb;
 
     push(bfr, size, &sub);
     EXPAND(sub.in) = 0;
@@ -593,6 +593,36 @@ pseudo(Cstring t)
 }
 
 
+/* print out the start of an `img' or `a' tag, applying callbacks as needed.
+ */
+static void
+printlinkyref(MMIOT *f, linkytype *tag, char *link, int size)
+{
+    char *edit;
+    
+    Qstring(tag->link_pfx, f);
+	
+    if ( tag->kind & IS_URL ) {
+	if ( f->cb->e_url && (edit = (*f->cb->e_url)(link, size, f->cb->e_data)) ) {
+	    puturl(edit, strlen(edit), f, 0);
+	    if ( f->cb->e_free ) (*f->cb->e_free)(edit, f->cb->e_data);
+	}
+	else
+	    puturl(link + tag->szpat, size - tag->szpat, f, 0);
+    }
+    else
+	___mkd_reparse(link + tag->szpat, size - tag->szpat, INSIDE_TAG, f);
+
+    Qstring(tag->link_sfx, f);
+
+    if ( f->cb->e_flags && (edit = (*f->cb->e_flags)(link, size, f->cb->e_data)) ) {
+	Qchar(' ', f);
+	Qstring(edit, f);
+	if ( f->cb->e_free ) (*f->cb->e_free)(edit, f->cb->e_data);
+    }
+} /* printlinkyref */
+
+
 /* print out a linky (or fail if it's Not Allowed)
  */
 static int
@@ -612,7 +642,7 @@ linkyformat(MMIOT *f, Cstring text, int image, Footnote *ref)
 	/* if SAFELINK, only accept links that are local or
 	 * a well-known protocol
 	 */
-	    return 0;
+	return 0;
     else
 	tag = &linkt;
 
@@ -620,21 +650,11 @@ linkyformat(MMIOT *f, Cstring text, int image, Footnote *ref)
 	return 0;
 
     if ( tag->link_pfx ) {
-	Qstring(tag->link_pfx, f);
-	
-	if ( tag->kind & IS_URL ) {
-	    if ( f->base && T(ref->link) && (T(ref->link)[tag->szpat] == '/') )
-		puturl(f->base, strlen(f->base), f, 0);
-	    puturl(T(ref->link) + tag->szpat, S(ref->link) - tag->szpat, f, 0);
-	}
-	else
-	    ___mkd_reparse(T(ref->link) + tag->szpat, S(ref->link) - tag->szpat, INSIDE_TAG, f);
-	
-	Qstring(tag->link_sfx, f);
+	printlinkyref(f, tag, T(ref->link), S(ref->link));
 
-	if ( tag->WxH) {
-	    if ( ref->height) Qprintf(f," height=\"%d\"", ref->height);
-	    if ( ref->width) Qprintf(f, " width=\"%d\"", ref->width);
+	if ( tag->WxH ) {
+	    if ( ref->height ) Qprintf(f," height=\"%d\"", ref->height);
+	    if ( ref->width ) Qprintf(f, " width=\"%d\"", ref->width);
 	}
 
 	if ( S(ref->title) ) {
@@ -827,9 +847,8 @@ process_possible_link(MMIOT *f, int size)
 	return 1;
     }
     else if ( isautoprefix(text) ) {
-	Qstring("<a href=\"", f);
-	puturl(text,size,f, 0);
-	Qstring("\">", f);
+	printlinkyref(f, &linkt, text, size);
+	Qchar('>', f);
 	puturl(text,size,f, 1);
 	Qstring("</a>", f);
 	return 1;
@@ -879,7 +898,10 @@ maybe_tag_or_link(MMIOT *f)
 		else
 		    size++;
 	    
-	    Qstring(forbidden_tag(f) ? "&lt;" : "<", f);
+	    if ( forbidden_tag(f) )
+		return 0;
+
+	    Qchar('<', f);
 	    while ( ((c = peek(f, 1)) != EOF) && (c != '>') )
 		Qchar(pull(f), f);
 	    return 1;
@@ -1065,7 +1087,7 @@ text(MMIOT *f)
     int smartyflags = 0;
 
     while (1) {
-        if ( (f->flags & AUTOLINK) && isalpha(peek(f,1)) )
+        if ( (f->flags & AUTOLINK) && isalpha(peek(f,1)) && !tag_text(f) )
 	    maybe_autolink(f);
 
         c = pull(f);
@@ -1169,11 +1191,10 @@ text(MMIOT *f)
 				break;
 		    case '<':   Qstring("&lt;", f);
 				break;
-		    case '\\':
 		    case '>': case '#': case '.': case '-':
 		    case '+': case '{': case '}': case ']':
-		    case '(': case ')': case '"': case '\'':
 		    case '!': case '[': case '*': case '_':
+		    case '\\':case '(': case ')':
 		    case '`':	Qchar(c, f);
 				break;
 		    default:
@@ -1402,8 +1423,9 @@ printblock(Paragraph *pp, MMIOT *f)
 
     while (t) {
 	if ( S(t->text) ) {
-	    if ( S(t->text) > 2 && T(t->text)[S(t->text)-2] == ' '
-				&& T(t->text)[S(t->text)-1] == ' ') {
+	    if ( t->next && S(t->text) > 2
+			 && T(t->text)[S(t->text)-2] == ' '
+			 && T(t->text)[S(t->text)-1] == ' ' ) {
 		push(T(t->text), S(t->text)-2, f);
 		push("\003\n", 2, f);
 	    }
