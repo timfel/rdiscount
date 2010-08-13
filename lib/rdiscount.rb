@@ -93,4 +93,4 @@ end
 
 Markdown = RDiscount unless defined? Markdown
 
-require 'rdiscount.so'
+require "rdiscount_ext"

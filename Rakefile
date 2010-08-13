@@ -8,8 +8,9 @@ task :default => :test
 # Ruby Extension
 # ==========================================================
 
-DLEXT = Config::CONFIG['DLEXT']
+DLEXT = Config::MAKEFILE_CONFIG['DLEXT']
 RUBYDIGEST = Digest::MD5.hexdigest(`#{RUBY} --version`)
+RDISCOUNT_EXT = "rdiscount_ext.#{DLEXT}"
 
 file "ext/ruby-#{RUBYDIGEST}" do |f|
   rm_f FileList["ext/ruby-*"]
@@ -22,17 +23,17 @@ file 'ext/Makefile' => FileList['ext/*.{c,h,rb}', "ext/ruby-#{RUBYDIGEST}"] do
 end
 CLEAN.include 'ext/Makefile', 'ext/mkmf.log'
 
-file "ext/rdiscount.#{DLEXT}" => FileList["ext/Makefile"] do |f|
+file "ext/#{RDISCOUNT_EXT}" => FileList["ext/Makefile"] do |f|
   sh 'cd ext && make clean && make && rm -rf conftest.dSYM'
 end
 CLEAN.include 'ext/*.{o,bundle,so,dll}'
 
-file "lib/rdiscount.#{DLEXT}" => "ext/rdiscount.#{DLEXT}" do |f|
+file "lib/#{RDISCOUNT_EXT}" => "ext/#{RDISCOUNT_EXT}" do |f|
   cp f.prerequisites, "lib/", :preserve => true
 end
 
 desc 'Build the rdiscount extension'
-task :build => "lib/rdiscount.#{DLEXT}"
+task :build => "lib/#{RDISCOUNT_EXT}"
 
 # ==========================================================
 # Manual

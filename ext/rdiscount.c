@@ -119,7 +119,7 @@ int rb_rdiscount__get_flags(VALUE ruby_obj)
 }
 
 
-void Init_rdiscount()
+void Init_rdiscount_ext()
 {
     rb_cRDiscount = rb_define_class("RDiscount", rb_cObject);
     rb_define_method(rb_cRDiscount, "to_html", rb_rdiscount_to_html, -1);
